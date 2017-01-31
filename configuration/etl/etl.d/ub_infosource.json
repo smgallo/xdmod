@@ -1,0 +1,65 @@
+{
+    "#": "Setup of action state tables",
+
+    "defaults": {
+
+        "ub-org-hierarchy": {
+            "endpoints": {
+               "source": {
+                    "type": "mysql",
+                    "name": "UB Org Hierarchy Src",
+                    "config": "datawarehouse-local",
+                    "schema": "mod_infosource"
+                },
+                "destination": {
+                    "type": "mysql",
+                    "name": "UB Org Hierarchy Dest",
+                    "config": "datawarehouse-local",
+                    "schema": "mod_infosource",
+                    "create_schema_if_not_exists": true
+                }
+            }
+        }
+    },
+
+    "ub-org-hierarchy": [
+        {
+            "name": "OrgLevelIngestor",
+            "class": "StructuredFileIngestor",
+            "namespace": "ETL\\Ingestor",
+            "options_class": "IngestorOptions",
+            "definition_file": "ub_infosource/ub_org_levels.json",
+            "enabled": true,
+            "endpoints": {
+                "source": {
+                    "type": "jsonfile",
+                    "name": "Org level initialization",
+                    "path": "ub_infosource/ub_org_levels.json"
+                }
+            }
+            
+        },{
+            "name": "RawInfosourceHierarchy",
+            "class": "DatabaseIngestor",
+            "namespace": "ETL\\Ingestor",
+            "options_class": "IngestorOptions",
+            "definition_file": "ub_infosource/raw_ub_org_hierarchy.json",
+            "enabled": true,
+            "endpoints": {
+                "source": {
+                    "type": "oracle",
+                    "name": "UB Infosource",
+                    "config": "oracle-test",
+                    "schema": "ENT"
+                }
+            }
+        },{
+            "name": "InfosourceHierarchy",
+            "class": "DatabaseIngestor",
+            "namespace": "ETL\\Ingestor",
+            "options_class": "IngestorOptions",
+            "definition_file": "ub_infosource/ub_org_hierarchy.json",
+            "enabled": true
+        }
+    ]
+}

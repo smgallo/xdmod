@@ -1,0 +1,141 @@
+{
+    "table_definition": {
+        "name": "raw_org_hierarchy",
+        "engine": "MyISAM",
+        "comment": "Raw organizational hierarchy from Infosource",
+        "columns": [
+            {
+                "name": "src_entity_num",
+                "type": "int(11)",
+                "nullable": false,
+                "comment": "Entity number provided by the source data"
+            },
+            {
+                "name": "src_entity_hierarchy",
+                "type": "varchar(32)",
+                "nullable": false,
+                "comment": "Node hierarchy represented as h1-h2-h3-h4-h5"
+            },
+            {
+                "name": "src_parent_hierarchy",
+                "type": "varchar(32)",
+                "nullable": true,
+                "default": null,
+                "comment": "Parent node hierarchy represented as h1-h2-h3-h4-h5"
+            },
+            {
+                "name": "name",
+                "type": "varchar(50)",
+                "nullable": false
+            },
+            {
+                "name": "short_name",
+                "type": "varchar(32)",
+                "nullable": false
+            },
+            {
+                "name": "abbrev",
+                "type": "varchar(3)",
+                "nullable": false
+            },
+            {
+                "name": "status",
+                "type": "varchar(1)",
+                "nullable": false
+            },
+            {
+                "name": "h1",
+                "type": "varchar(2)",
+                "nullable": true,
+                "comment": ""
+            },
+            {
+                "name": "h2",
+                "type": "varchar(2)",
+                "nullable": true,
+                "comment": ""
+            },
+            {
+                "name": "h3",
+                "type": "varchar(2)",
+                "nullable": true,
+                "comment": ""
+            },
+            {
+                "name": "h4",
+                "type": "varchar(2)",
+                "nullable": true,
+                "comment": ""
+            },
+            {
+                "name": "h5",
+                "type": "varchar(2)",
+                "nullable": true,
+                "comment": ""
+            }
+        ],
+        "indexes": [
+            {
+                "name": "PRIMARY",
+                "columns": [
+                    "src_entity_num"
+                ]
+            },{
+                "name": "idx_status",
+                "columns": [
+                    "status"
+                ]
+            }
+        ]
+    },
+
+    "#": "Note that Oracle will return uppercase column names unless a quoted alias is used",
+    "#": "(e.g. COLUMN AS \"alias\"). We can't quote them here or verification will fail because",
+    "#": "the columns will not match the destination table so we must use a destination_record_map",
+    "#": "to map the uppercase column names to lowercase names in the destination table.",
+    "#": "Perhaps the destination endpoint could contain a filter to quote the aliases in the future.",
+
+    "source_query": {
+        "records": {
+            "UB_ENT_NUMBER": "UB_ENT_NUMBER",
+            "UB_ENT_NAME": "UB_ENT_NAME",
+            "ENT_SHORT_NAME": "ENT_SHORT_NAME",
+            "UB_ENT_ABBR": "UB_ENT_ABBR",
+            "UB_ENT_STATUS": "UB_ENT_STATUS",
+            "HIER_LEVEL_1": "HIER_LEVEL_1",
+            "HIER_LEVEL_2": "HIER_LEVEL_2",
+            "HIER_LEVEL_3": "HIER_LEVEL_3",
+            "HIER_LEVEL_4": "HIER_LEVEL_4",
+            "HIER_LEVEL_5": "HIER_LEVEL_5",
+            "SRC_ENTITY_HIERARCHY": "(HIER_LEVEL_1 || '-' || HIER_LEVEL_2 || '-' || HIER_LEVEL_3 || '-' || HIER_LEVEL_4 || '-' || HIER_LEVEL_5)",
+            "SRC_PARENT_HIERARCHY": "(CASE WHEN HIER_LEVEL_5 != '00' THEN (HIER_LEVEL_1 || '-' || HIER_LEVEL_2 || '-' || HIER_LEVEL_3 || '-' || HIER_LEVEL_4 || '-00') WHEN HIER_LEVEL_4 != '00' THEN (HIER_LEVEL_1 || '-' || HIER_LEVEL_2 || '-' || HIER_LEVEL_3 || '-00-' || HIER_LEVEL_5) WHEN HIER_LEVEL_3 != '00' THEN (HIER_LEVEL_1 || '-' || HIER_LEVEL_2 || '-00-' || HIER_LEVEL_4 || '-' || HIER_LEVEL_5) WHEN HIER_LEVEL_2 != '00' THEN (HIER_LEVEL_1 || '-00-' || HIER_LEVEL_3 || '-' || HIER_LEVEL_4 || '-' || HIER_LEVEL_5) ELSE NULL END)"
+        },
+
+        "joins": [
+            {
+                "name": "UB_ENTITY",
+                "schema": "ENT"
+            }
+        ]
+    },
+
+    "#": "Map uppercase column names returned by Oracle to lowercase destination table column names.",
+    "#": "We can't use a case-insensitive match because the destination database may be case-sensitive.",
+
+    "destination_record_map": {
+        "raw_org_hierarchy": {
+            "src_entity_num": "UB_ENT_NUMBER",
+            "name": "UB_ENT_NAME",
+            "short_name": "ENT_SHORT_NAME",
+            "abbrev": "UB_ENT_ABBR",
+            "status": "UB_ENT_STATUS",
+            "h1": "HIER_LEVEL_1",
+            "h2": "HIER_LEVEL_2",
+            "h3": "HIER_LEVEL_3",
+            "h4": "HIER_LEVEL_4",
+            "h5": "HIER_LEVEL_5",
+            "src_entity_hierarchy": "SRC_ENTITY_HIERARCHY",
+            "src_parent_hierarchy":  "SRC_PARENT_HIERARCHY"
+        }
+    }
+}

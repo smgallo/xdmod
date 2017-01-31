@@ -1,0 +1,172 @@
+{
+    "table_definition": {
+        "name": "org_hierarchy",
+        "engine": "MyISAM",
+        "comment": "Massaged organizational hierarchy from Infosource",
+        "columns": [
+            {
+                "name": "org_hierarchy_id",
+                "type": "int(11)",
+                "nullable": false,
+                "extra": "auto_increment"
+            },
+            {
+                "name": "parent_id",
+                "type": "int(11)",
+                "nullable": true,
+                "default": null,
+                "comment": "Parent node id"
+            },
+            {
+                "name": "org_hierarchy_level_id",
+                "type": "int(11)",
+                "nullable": false,
+                "default": 0,
+                "comment": "Depth in the hierarchy"
+            },
+            {
+                "name": "src_entity_num",
+                "type": "varchar(32)",
+                "nullable": true,
+                "default": null,
+                "comment": "Entity identifier from source system used to manage updates"
+            },
+            {
+                "name": "src_parent_num",
+                "type": "varchar(32)",
+                "nullable": true,
+                "default": null,
+                "comment": "PArent identifier from source system used to manage updates"
+            },
+            {
+                "name": "name",
+                "type": "varchar(256)",
+                "nullable": false
+            },
+            {
+                "name": "short_name",
+                "type": "varchar(128)",
+                "nullable": false
+            },
+            {
+                "name": "abbrev",
+                "type": "varchar(16)",
+                "nullable": true,
+                "default": null
+            },
+            {
+                "name": "path",
+                "type": "varchar(512)",
+                "nullable": true,
+                "default": null,
+                "comment": "Full path from root using node abbreviations"
+            },
+            {
+                "name": "id_path",
+                "type": "varchar(512)",
+                "nullable": true,
+                "default": null,
+                "comment": "Full path from root using node ids"
+            },
+            {
+                "name": "note",
+                "type": "varchar(512)",
+                "nullable": true,
+                "default": null
+            },
+            {
+                "name": "is_active",
+                "type": "tinyint(1)",
+                "nullable": false,
+                "default": 1,
+                "comment": "Flag for depricated units as organization evolves"
+            }
+        ],
+        "indexes": [
+            {
+                "name": "PRIMARY",
+                "columns": [
+                    "org_hierarchy_id"
+                ]
+            },
+            {
+                "name": "idx_parent",
+                "columns": [
+                    "parent_id"
+                ]
+            },{
+                "name": "idx_active",
+                "columns": [
+                    "is_active"
+                ]
+            }
+        ],
+
+        "triggers": [
+            {
+                "#": "On insert, construct an adjacency list using parent ids and also construct a full path to the",
+                "#": "decanal unit using the abbreviation.",
+
+                "name": "org_hierarchy_path_BINS",
+                "time": "BEFORE",
+                "event": "INSERT",
+                "table": "org_hierarchy",
+                "body": "BEGIN\n-- Parent node path using node abbreviations\nDECLARE `parent_path` TEXT DEFAULT '';\n-- Parent node path using node ids\nDECLARE `parent_id_path` TEXT DEFAULT '';\n-- Parent node id\nDECLARE `pid` INT DEFAULT NULL;\nDECLARE `next_id` INT DEFAULT NULL;\nDECLARE `parent_level` INT DEFAULT 0;\n\n-- Store the path information for the parent.  Root nodes will have parent_id = NULL.  When\n-- entring non-ub entities leave the org_unit_hierarch as NULL and provide the path as the path to\n-- the parent where the new entity should be placed.  NOTE: We are only using the\n-- src_entity_num on insert since we assign a parent id after that.\n\n-- Cleanup\n\nSET NEW.abbrev = TRIM(NEW.abbrev);\nSET NEW.name = TRIM(NEW.name);\nSET NEW.short_name = TRIM(NEW.short_name);\n\n-- On insert we are either copying from the existing UB decanal units or entering a new (e.g.,\n-- non-ub) decanal unit.  To initially construct the path and assign a parent_id for UB decanal\n-- units we need to use the src_entity_num provided by the spreadsheet.  For non-ub units we\n-- are building the tree ourselves and can look up the parent path directly.  Also store the\n-- parent_id so it can be used for the adjacency list instead of the src_entity_num\n\nIF NEW.src_entity_num IS NULL THEN\n-- Non-UB unit\nSELECT `path` INTO `parent_path` FROM `org_hierarchy` WHERE `path` = NEW.`path`;\nSELECT `id_path` INTO `parent_id_path` FROM `org_hierarchy` WHERE `path` = NEW.`path`;\nSELECT `org_hierarchy_id` INTO `pid` FROM `org_hierarchy` WHERE `path` = NEW.`path`;\nSELECT `org_hierarchy_level_id` INTO `parent_level` FROM `org_hierarchy` WHERE `path` = NEW.`path`;\nELSE\nSELECT `path` INTO `parent_path` FROM `org_hierarchy` WHERE `src_entity_num` = NEW.`src_parent_num`;\nSELECT `id_path` INTO `parent_id_path` FROM `org_hierarchy` WHERE `src_entity_num` = NEW.`src_parent_num`;\nSELECT `org_hierarchy_id` INTO `pid` FROM `org_hierarchy` WHERE `src_entity_num` = NEW.`src_parent_num`;\nSELECT `org_hierarchy_level_id` INTO `parent_level` FROM `org_hierarchy` WHERE `src_entity_num` = NEW.`src_parent_num`;\nEND IF;\n\n-- Construct the path and set the parent id for the adjacency list.  Root nodes will have parent_id = NULL.\n\nSET NEW.path = CONCAT(IF(LENGTH(`parent_path`) < 2, '/', CONCAT(`parent_path`, '/')), NEW.`abbrev`);\nSET NEW.parent_id = `pid`;\n\n-- Since we don't have the id of the current node (it has not yet been inserted), we will need to\n-- find the next auto-increment id from the information schema. We must use innodb tables for this\n-- so the subquery locks. Another way to do this is using an after insert trigger.\n\nSET next_id = (SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='org_hierarchy');\nSET NEW.id_path = CONCAT(IF(LENGTH(`parent_id_path`) < 2, '/', CONCAT(`parent_id_path`, '/')), `next_id`);\nSET NEW.org_hierarchy_level_id = `parent_level` + 1;\nEND"
+            },
+            {
+                "#": "When we update an entry in the table (e.g., we add an override to an abbreviation, or",
+                "#": "move the node around in the tree) update the path and parent id to reflect the change.",
+                "#": "If a non-leaf node is modified the entire table should be updated to trigger the update",
+                "#": "of any child paths (e.g., update ub_hierarchy set abbrev_override = abbrev_override where 1;",
+                "#": "Nodes can be moved in the hierarchy by updating their path to the destination node.  For",
+                "#": "example, to move /SOR/CCR into the /DECANAL hierarchy execute",
+                "#": "update `ub_decanal_hierarchy` set path='/DECANAL' where path='/SOR/CCR';",
+
+                "name": "org_hierarchy_path_BUPD",
+                "time": "BEFORE",
+                "event": "UPDATE",
+                "table": "org_hierarchy",
+                "body": "BEGIN\n-- Parent node path using node abbreviations\nDECLARE `parent_path` TEXT DEFAULT '';\n-- Parent node path using node ids\nDECLARE `parent_id_path` TEXT DEFAULT '';\n-- Parent node id\nDECLARE `pid` INT DEFAULT NULL;\n\n-- Cleanup\n-- SET NEW.abbrev_override = TRIM(NEW.abbrev_override);\nSET NEW.path = TRIM(NEW.path);\n\n-- If old path != new path assume the new path is the parent and look up the new parent id.\n-- Otherwise look up the parent path.\n\nIF OLD.path != NEW.path THEN\nSET parent_path = NEW.path;\nSET parent_id_path = NEW.id_path;\nSELECT `org_hierarchy_id` INTO `pid` FROM `org_hierarchy` WHERE `path` = NEW.`path`;\nSET NEW.parent_id = pid;\nELSE\nSELECT `path` INTO `parent_path` FROM `org_hierarchy` WHERE `org_hierarchy_id` = NEW.parent_id;\nSELECT `id_path` INTO `parent_id_path` FROM `org_hierarchy` WHERE `org_hierarchy_id` = NEW.parent_id;\nEND IF;\n\n-- Construct the path and set the parent id for the adjacency list.\n-- SET NEW.`path` = CONCAT(IF(LENGTH(`parent_path`) < 2, '/', CONCAT(`parent_path`, '/')), IF(NEW.`abbrev_override` IS NULL, NEW.`abbrev`, NEW.`abbrev_override`));\nSET NEW.`path` = CONCAT(IF(LENGTH(`parent_path`) < 2, '/', CONCAT(`parent_path`, '/')), NEW.`abbrev`);\nSET NEW.`id_path` = CONCAT(IF(LENGTH(`parent_id_path`) < 2, '/', CONCAT(`parent_id_path`, '/')), NEW.`org_hierarchy_id`);\n\nEND"
+            }
+        ]
+    },
+
+    "#": "Query the raw data that we pulled from Infosource order it by hierarchy such that",
+    "#": "parent nodes in the tree are inserted before children. This allows the triggers to",
+    "#": "build the path properly. We also need to be able to obtain the parent entity number.",
+
+    "source_query": {
+        "records": {
+            "name": "name",
+            "short_name": "short_name",
+            "abbrev": "abbrev",
+            "is_active": "IF('A' = status, 1, 0)",
+            "org_hierarchy_level_id": 0,
+            "src_entity_num": "src_entity_num",
+            "src_parent_num": "(SELECT src_entity_num FROM `${SOURCE_SCHEMA}`.`raw_org_hierarchy` WHERE src_entity_hierarchy = raw_entity.src_parent_hierarchy AND status = 'A')"
+        },
+
+        "joins": [
+            {
+                "name": "raw_org_hierarchy",
+                "schema": "${SOURCE_SCHEMA}",
+                "alias": "raw_entity"
+            }
+        ],
+
+        "where": [
+            "status = 'A'"
+        ],
+
+        "#": "Data MUST be sorted according to the hierarchy so that parent nodes are added BEFORE children",
+
+        "orderby": [
+            "h1 asc",
+            "h2 asc",
+            "h3 asc",
+            "h4 asc",
+            "h5 asc"
+        ]
+
+    }
+}

@@ -1,0 +1,34 @@
+{
+    "table_definition": {
+        "name": "org_hierarchy_level",
+        "engine": "MyISAM",
+        "comment": "Description of the organizational hierarchy",
+        "columns": [
+            {
+                "name": "org_hierarchy_level_id",
+                "type": "int(11)",
+                "nullable": false,
+                "comment": "Depth in the hierarchy, reserve 0 for unknowns"
+            },
+            {
+                "name": "level_name",
+                "type": "varchar(64)",
+                "nullable": false,
+                "comment": "Name for a level in an organizational hierarchy"
+            }
+        ],
+        "indexes": [
+            {
+                "name": "PRIMARY",
+                "columns": [
+                    "org_hierarchy_level_id"
+                ]
+            }
+        ]
+    },
+
+    "destination_columns": [
+        "org_hierarchy_level_id",
+        "level_name"
+    ]
+}
